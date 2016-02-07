@@ -26,13 +26,31 @@ class Session::Impl {
     void SetPayload(const Payload& payload);
     void SetProxies(Proxies&& proxies);
     void SetProxies(const Proxies& proxies);
-    void SetMultipart(Multipart&& multipart);
-    void SetMultipart(const Multipart& multipart);
+	void SetMultipart(const Multipart& multipart);
+	void SetMultipart(Multipart&& multipart);
     void SetRedirect(const bool& redirect);
     void SetMaxRedirects(const long& max_redirects);
     void SetCookies(const Cookies& cookies);
     void SetBody(Body&& body);
     void SetBody(const Body& body);
+
+	void SetCurloptString(CURLoption option, const char* stringVal)
+	{
+		auto curl = curl_->handle;
+		curl_easy_setopt(curl, option, stringVal);
+	}
+
+	void SetCurloptLong(CURLoption option, const long longVal)
+	{
+		auto curl = curl_->handle;
+		curl_easy_setopt(curl, option, longVal);
+	}
+
+	void SetUserAgent(const char* userAgentStr)
+	{
+		auto curl = curl_->handle;
+		curl_easy_setopt(curl, CURLOPT_USERAGENT, userAgentStr);
+	}
 
     Response Delete();
     Response Get();
@@ -170,49 +188,57 @@ void Session::Impl::SetProxies(Proxies&& proxies) {
     proxies_ = std::move(proxies);
 }
 
-void Session::Impl::SetMultipart(Multipart&& multipart) {
+void Session::Impl::SetMultipart(const Multipart& multipart) 
+{
     auto curl = curl_->handle;
     if (curl) {
         struct curl_httppost* formpost = NULL;
         struct curl_httppost* lastptr = NULL;
 
-        for (auto& part : multipart.parts) {
-            auto content_option = CURLFORM_COPYCONTENTS;
-            if (part.is_file) {
-                content_option = CURLFORM_FILE;
+        for (auto& part : multipart.parts) 
+		{
+            if (part.is_file) 
+			{
+				if (part.content_type.empty()) 
+				{
+					curl_formadd(&formpost, &lastptr, 
+								 CURLFORM_COPYNAME, part.name.c_str(),
+								 CURLFORM_BUFFER, part.value.c_str(), 
+								 CURLFORM_BUFFERPTR, (part.file_bytes.size() ? &part.file_bytes[0] : nullptr),
+								 CURLFORM_BUFFERLENGTH, (long)part.file_bytes.size(),
+								 CURLFORM_END);
+				}
+				else 
+				{
+					curl_formadd(&formpost, &lastptr,
+								 CURLFORM_COPYNAME, part.name.c_str(),
+								 CURLFORM_BUFFER, part.value.c_str(),
+								 CURLFORM_BUFFERPTR, (part.file_bytes.size() ? &part.file_bytes[0] : nullptr),
+								 CURLFORM_BUFFERLENGTH, (long)part.file_bytes.size(),
+								 CURLFORM_CONTENTTYPE, part.content_type.c_str(),
+								 CURLFORM_END);
+				}
             }
-            if (part.content_type.empty()) {
-                curl_formadd(&formpost, &lastptr, CURLFORM_COPYNAME, part.name.data(),
-                             content_option, part.value.data(), CURLFORM_END);
-            } else {
-                curl_formadd(&formpost, &lastptr, CURLFORM_COPYNAME, part.name.data(),
-                             content_option, part.value.data(), CURLFORM_CONTENTTYPE,
-                             part.content_type.data(), CURLFORM_END);
-            }
-        }
-        curl_easy_setopt(curl, CURLOPT_HTTPPOST, formpost);
-    }
-}
-
-void Session::Impl::SetMultipart(const Multipart& multipart) {
-    auto curl = curl_->handle;
-    if (curl) {
-        struct curl_httppost* formpost = NULL;
-        struct curl_httppost* lastptr = NULL;
-
-        for (auto& part : multipart.parts) {
-            auto content_option = CURLFORM_PTRCONTENTS;
-            if (part.is_file) {
-                content_option = CURLFORM_FILE;
-            }
-            if (part.content_type.empty()) {
-                curl_formadd(&formpost, &lastptr, CURLFORM_COPYNAME, part.name.data(),
-                             content_option, part.value.data(), CURLFORM_END);
-            } else {
-                curl_formadd(&formpost, &lastptr, CURLFORM_COPYNAME, part.name.data(),
-                             content_option, part.value.data(), CURLFORM_CONTENTTYPE,
-                             part.content_type.data(), CURLFORM_END);
-            }
+			else
+			{
+				if (part.content_type.empty()) 
+				{
+					curl_formadd(&formpost, &lastptr, 
+								 CURLFORM_COPYNAME, part.name.c_str(),
+								 CURLFORM_PTRCONTENTS, part.value.data(), 
+								 CURLFORM_CONTENTSLENGTH, part.value.size(),
+								 CURLFORM_END);
+				}
+				else 
+				{
+					curl_formadd(&formpost, &lastptr, 
+								 CURLFORM_COPYNAME, part.name.c_str(),
+								 CURLFORM_PTRCONTENTS, part.value.data(), 
+								 CURLFORM_CONTENTSLENGTH, part.value.size(),
+								 CURLFORM_CONTENTTYPE, part.content_type.c_str(), 
+								 CURLFORM_END);
+				}
+			}
         }
         curl_easy_setopt(curl, CURLOPT_HTTPPOST, formpost);
     }
@@ -391,7 +417,6 @@ void Session::SetPayload(Payload&& payload) { pimpl_->SetPayload(std::move(paylo
 void Session::SetProxies(const Proxies& proxies) { pimpl_->SetProxies(proxies); }
 void Session::SetProxies(Proxies&& proxies) { pimpl_->SetProxies(std::move(proxies)); }
 void Session::SetMultipart(const Multipart& multipart) { pimpl_->SetMultipart(multipart); }
-void Session::SetMultipart(Multipart&& multipart) { pimpl_->SetMultipart(std::move(multipart)); }
 void Session::SetRedirect(const bool& redirect) { pimpl_->SetRedirect(redirect); }
 void Session::SetMaxRedirects(const long& max_redirects) { pimpl_->SetMaxRedirects(max_redirects); }
 void Session::SetCookies(const Cookies& cookies) { pimpl_->SetCookies(cookies); }
@@ -409,12 +434,15 @@ void Session::SetOption(Payload&& payload) { pimpl_->SetPayload(std::move(payloa
 void Session::SetOption(const Proxies& proxies) { pimpl_->SetProxies(proxies); }
 void Session::SetOption(Proxies&& proxies) { pimpl_->SetProxies(std::move(proxies)); }
 void Session::SetOption(const Multipart& multipart) { pimpl_->SetMultipart(multipart); }
-void Session::SetOption(Multipart&& multipart) { pimpl_->SetMultipart(std::move(multipart)); }
 void Session::SetOption(const bool& redirect) { pimpl_->SetRedirect(redirect); }
 void Session::SetOption(const long& max_redirects) { pimpl_->SetMaxRedirects(max_redirects); }
 void Session::SetOption(const Cookies& cookies) { pimpl_->SetCookies(cookies); }
 void Session::SetOption(const Body& body) { pimpl_->SetBody(body); }
 void Session::SetOption(Body&& body) { pimpl_->SetBody(std::move(body)); }
+void Session::SetCurloptString(unsigned int option, const char* stringVal) { pimpl_->SetCurloptString((CURLoption)option, stringVal); }
+void Session::SetCurloptLong(unsigned int option, const long longVal) { pimpl_->SetCurloptLong((CURLoption)option, longVal); }
+void Session::SetUserAgent(const std::string& userAgentStr) { pimpl_->SetUserAgent(userAgentStr.c_str()); }
+void Session::SetUserAgent(const char* userAgentStr) { pimpl_->SetUserAgent(userAgentStr); }
 Response Session::Delete() { return pimpl_->Delete(); }
 Response Session::Get() { return pimpl_->Get(); }
 Response Session::Head() { return pimpl_->Head(); }

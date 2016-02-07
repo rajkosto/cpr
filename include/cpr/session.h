@@ -61,6 +61,11 @@ class Session {
     void SetOption(Body&& body);
     void SetOption(const Body& body);
 
+	void SetCurloptString(unsigned int option, const char* stringVal);
+	void SetCurloptLong(unsigned int option, const long longVal);
+	void SetUserAgent(const std::string& userAgentStr);
+	void SetUserAgent(const char* userAgentStr);
+
     Response Delete();
     Response Get();
     Response Head();
